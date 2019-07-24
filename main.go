@@ -19,7 +19,7 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "home.html")
 }
 
-var addr = flag.String("addr", ":8081", "websocket service 8 h")
+var addr = flag.String("addr", ":8082", "websocket service 8 h")
 
 func main() {
 

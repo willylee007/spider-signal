@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/rs/xid"
 )
 
 const (
@@ -34,8 +35,19 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	// 解决跨域问题
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		host := r.Host
+		if strings.Contains(host, "localhost") {
+			return true
+		}
+		return false
 	}}
+
+// ClientMsg is a broadcast msg contain client and msg
+type ClientMsg struct {
+	client *Client
+
+	msg []byte
+}
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
@@ -46,6 +58,11 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan []byte
+
+	// client in which room
+	room *Room
+
+	id string
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -55,7 +72,7 @@ type Client struct {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.room.unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
@@ -71,7 +88,11 @@ func (c *Client) readPump() {
 		}
 		// 去掉前后空白空格, 中间如果有回车, 用空格替换
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- message
+		msg := &ClientMsg{
+			client: c,
+			msg:    message,
+		}
+		c.hub.broadcast <- msg
 	}
 }
 
@@ -100,12 +121,10 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
-			fmt.Println("write msg: ", message)
 			w.Write(message)
 
 			// Add queued chat messages to the current websocket message.
 			n := len(c.send)
-			fmt.Printf("queued lenght is %v\n", n)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
 				w.Write(<-c.send)
@@ -130,8 +149,8 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	client.hub.register <- client
+	guid := xid.New()
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 2048), id: guid.String()}
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.

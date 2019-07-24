@@ -1,49 +1,71 @@
 package main
 
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/rs/xid"
+)
+
+const (
+	joinMsg  = "join"
+	leaveMsg = "leave"
+	chatMsg  = "chat"
+)
+
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
 type Hub struct {
-	// Registered clients.
-	clients map[*Client]bool
-
+	unregisterRoom chan *Room
 	// Inbound messages from the clients.
-	broadcast chan []byte
+	broadcast chan *ClientMsg
 
-	// Register requests from the clients.
-	register chan *Client
-
-	// Unregister requests from clients.
-	unregister chan *Client
+	rooms map[string]*Room
 }
 
 func newHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
+		broadcast:      make(chan *ClientMsg),
+		rooms:          make(map[string]*Room),
+		unregisterRoom: make(chan *Room),
 	}
 }
 
 func (h *Hub) run() {
 	for {
 		select {
-		case client := <-h.register:
-			h.clients[client] = true
-		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
-			}
+		case room := <-h.unregisterRoom:
+			delete(h.rooms, room.name)
+			fmt.Printf("clean room, hub have %d room currently \n", len(h.rooms))
 		case message := <-h.broadcast:
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
-				}
+			signal := SignalMsg{}
+			client := message.client
+			msg := message.msg
+			err := json.Unmarshal(msg, &signal)
+			if err != nil {
+				return
 			}
+
+			switch signal.Type {
+			case joinMsg:
+				roomName := signal.RoomName
+				var room = h.rooms[roomName]
+				if room == nil {
+					room = newRoom(roomName, xid.New().String(), h)
+					h.rooms[roomName] = room
+					client.room = room
+					serveRoom(room)
+				} else {
+					client.room = room
+				}
+				room.register <- client
+			case leaveMsg:
+			case chatMsg:
+				chatMsg := signal.Msg
+				chatByte := []byte(chatMsg)
+				client.room.broadcast <- chatByte
+			}
+
 		}
 	}
 }
