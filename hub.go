@@ -11,6 +11,7 @@ const (
 	joinMsg  = "join"
 	leaveMsg = "leave"
 	chatMsg  = "chat"
+	offerMsg = "offer"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the
@@ -60,10 +61,21 @@ func (h *Hub) run() {
 				}
 				room.register <- client
 			case leaveMsg:
+			case offerMsg:
+				fmt.Println("receive offer")
+				relayMsg := &RelayClientSignal{
+					client: client,
+					msg:    msg,
+				}
+				client.room.relay <- relayMsg
 			case chatMsg:
 				chatMsg := signal.Msg
 				chatByte := []byte(chatMsg)
-				client.room.broadcast <- chatByte
+				queueMsg := &ClientMsg{
+					client: client,
+					msg:    chatByte,
+				}
+				client.room.broadcast <- queueMsg
 			}
 
 		}
