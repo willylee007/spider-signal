@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"net/http"
 )
@@ -19,7 +20,7 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "home.html")
 }
 
-var addr = flag.String("addr", ":8082", "websocket service 8 h")
+var addr = flag.String("addr", ":4444", "websocket service")
 
 func main() {
 
@@ -27,11 +28,14 @@ func main() {
 	log.Println("let's go!")
 	hub := newHub()
 	go hub.run()
-	http.HandleFunc("/", serveHome)
+	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		io.WriteString(w, "Hello, TLS!\n")
+	})
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
-	err := http.ListenAndServe(*addr, nil)
+	// err := http.ListenAndServe(*addr, nil)
+	err := http.ListenAndServeTLS(*addr, "1.crt", "1.key", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}

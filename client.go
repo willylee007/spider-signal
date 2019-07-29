@@ -2,10 +2,8 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -36,11 +34,12 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	// 解决跨域问题
 	CheckOrigin: func(r *http.Request) bool {
-		host := r.Host
-		if strings.Contains(host, "localhost") {
-			return true
-		}
-		return false
+		return true
+		// host := r.Host
+		// if strings.Contains(host, "localhost") {
+		// 	return true
+		// }
+		// return false
 	}}
 
 // ClientMsg is a broadcast msg contain client and msg
@@ -76,15 +75,14 @@ type Client struct {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.room.unregister <- c
+		c.hub.unregisterClient <- c
 		c.conn.Close()
 	}()
 	// c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		mt, message, err := c.conn.ReadMessage()
-		fmt.Println("read msg type", mt)
+		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
